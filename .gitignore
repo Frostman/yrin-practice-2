@@ -1,0 +1,11 @@
+.DS_Store
+*.iws
+*.iml
+*.ipr
+.idea
+out
+target
+tmp
+temp
+database
+lib/kotlin-runtime.jar

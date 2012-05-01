@@ -40,22 +40,25 @@ class EditableTable(val columns : List<Column>) {
                 public override fun getColumnName(column : Int) = columns[column].name
 
                 public override fun setValueAt(newValue : Any?, row : Int, column : Int) {
+                    var changed : List<#(Int, Any?)>?;
                     if(data[row][column] is StringValue && !(data[row][column] as StringValue).str.equals(newValue)) {
-                        val changed = columns[column].onChanged(if(newValue is StringValue) newValue.str else newValue as String)
+                        changed = columns[column].onChanged(if(newValue is StringValue) newValue.str else newValue as String)
+
+                        data[row][column] = if (newValue is String) StringValue(newValue) else newValue as Value
+                        fireTableCellUpdated(row, column)
+
                         if(changed != null) {
                             for(change in changed) {
-                                setValueAt(change._2, row, change._1)
+                                data[row][change._1] = if (change._2 is String) StringValue(change._2 as String) else change._2 as Value
+                                fireTableCellUpdated(row, change._1)
                             }
                         }
+                    } else {
+                        data[row][column] = if (newValue is String) StringValue(newValue) else newValue as Value
+                        fireTableCellUpdated(row, column)
                     }
-                    data[row][column] = if (newValue is String) StringValue(newValue) else newValue as Value
-                    fireTableCellUpdated(row, column)
                 }
             })
-            //        var idx = 0
-            //        for (column in columns) {
-            //            table.getColumnModel()!!.getColumn(idx++)!!.setCellEditor(column.editor)
-            //        }
         }
 
     fun <T> getObjects(transform : List<Value>.() -> T) = data.map{it.transform()}

@@ -1,6 +1,7 @@
 package ui
 
 import auth.AuthDb
+import auth.Info
 import auth.Role
 import auth.User
 import auth.checkCredentials
@@ -14,34 +15,29 @@ import java.awt.event.FocusListener
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
-import java.util.ArrayList
-import java.util.Date
-import java.util.List
-import java.util.Map
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JDialog
 import javax.swing.JFileChooser
 import javax.swing.JFrame
 import javax.swing.JLabel
-import javax.swing.JOptionPane
 import javax.swing.JPasswordField
 import javax.swing.JTextField
 import javax.swing.WindowConstants
 import javax.swing.text.JTextComponent
-import ui.et.Column
+import org.apache.commons.codec.digest.DigestUtils
 import ui.et.EditableTable
-import ui.et.StringValue
-import ui.et.Value
 
 public val key : String = "test key"
+
+
+fun String.sha() = DigestUtils.sha256Hex(this)!!
 
 fun main(args : Array<String>) {
     val dbPath = "database"
 
     if(!File(dbPath).exists()) {
         val db = AuthDb("database")
-        db.users.put("admin", User("admin", "admin", Role.ADMIN, 0, "0%"))
+        db.users.put("admin", User("admin", "admin".sha(), Role.ADMIN, 0))
 
         db.save()
         encryptFile(key, File("database"))
@@ -176,7 +172,7 @@ fun showVariantsWindow(val parent : Frame? = null, val username : String) {
     loginField.setEditable(false)
     dialog.getContentPane()?.add(loginField)
 
-    val roleField = JTextField("role: " + if (user.role == Role.ADMIN) "admin" else "user")
+    val roleField = JTextField("role: " + if (user.role == Role.ADMIN) "admin" else  if (user.role == Role.EDITOR) "editor" else "user")
     roleField.setBounds(60, 44, 200, 24)
     roleField.setEditable(false)
     dialog.getContentPane()?.add(roleField)
@@ -188,12 +184,9 @@ fun showVariantsWindow(val parent : Frame? = null, val username : String) {
     }
     dialog.getContentPane()?.add(usersButton)
 
-    val confButton = JButton("Config")
-    confButton.setBounds(60, 108, 80, 25)
-    if(user.role != Role.ADMIN) {
-        confButton.setEnabled(false)
-    }
-    dialog.getContentPane()?.add(confButton)
+    val infoButton = JButton("Info")
+    infoButton.setBounds(60, 108, 80, 25)
+    dialog.getContentPane()?.add(infoButton)
 
     val exitButton = JButton("Exit")
     exitButton.setBounds(60, 138, 80, 25)
@@ -217,11 +210,9 @@ fun showVariantsWindow(val parent : Frame? = null, val username : String) {
                     }
                 }
 
-                confButton -> {
-                    if(user.role == Role.ADMIN) {
-                        showConfWindow(username)
-                        dialog.dispose()
-                    }
+                infoButton -> {
+                    showInfoWindow(username)
+                    dialog.dispose()
                 }
 
                 exitButton -> {
@@ -254,7 +245,7 @@ fun showVariantsWindow(val parent : Frame? = null, val username : String) {
     }
 
     usersButton.addMouseListener(clickHandler)
-    confButton.addMouseListener(clickHandler)
+    infoButton.addMouseListener(clickHandler)
     exitButton.addMouseListener(clickHandler)
     encryptButton.addMouseListener(clickHandler)
     decryptButton.addMouseListener(clickHandler)
@@ -310,7 +301,7 @@ fun showUsersListWindow(val username : String) {
                 }
 
                 addButton -> {
-                    table.data.add(User("NAME", "PASSWORD", Role.USER, System.currentTimeMillis(), "0%").asColumns())
+                    table.data.add(User("NAME", "PASSWORD", Role.USER, System.currentTimeMillis()).asColumns())
                     table.data = table.data
                 }
 
@@ -331,35 +322,54 @@ fun showUsersListWindow(val username : String) {
     frame.setVisible(true)
 }
 
-fun showConfWindow(val username : String) {
+fun showInfoWindow(val username : String) {
+    val user = auth.getUser(username)!!
+
     val frame = JFrame("Configuration")
     frame.setLayout(null)
     frame.setBounds(100, 100, 600, 650)
     frame.setResizable(false)
     frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE)
 
-    val table = EditableTable(confColumns)
+    val table = EditableTable(if (user.role == Role.USER) Info.columns else Info.editableColumns )
     frame.add(table.getScrollPane(10, 10, 580, 560))
 
     val db = AuthDb("database")
     db.load(true)
-    table.data = db.confs.entrySet().map{it.asColumns()}
+    table.data = db.infos.map{it.asColumns()}
 
     val saveButton = JButton("Save")
     saveButton.setBounds(10, 590, 100, 30)
+    if (user.role == Role.USER) {
+        saveButton.setEnabled(false)
+    }
     frame.add(saveButton)
 
     val closeButton = JButton("Menu")
     closeButton.setBounds(150, 590, 100, 30)
     frame.add(closeButton)
 
+    val addButton = JButton("Add")
+    addButton.setBounds(350, 590, 100, 30)
+    if (user.role == Role.USER) {
+        addButton.setEnabled(false)
+    }
+    frame.add(addButton)
+
+    val remButton = JButton("Remove")
+    remButton.setBounds(490, 590, 100, 30)
+    if (user.role == Role.USER) {
+        remButton.setEnabled(false)
+    }
+    frame.add(remButton)
+
     val clickHandler = object : MouseAdapter() {
         public override fun mouseClicked(e : MouseEvent?) {
             when (e?.getSource()) {
                 saveButton -> {
-                    db.confs.clear()
-                    for (pair in table.getObjects{this}) {
-                        db.confs.put((pair[0] as StringValue).str, (pair[1] as StringValue).str)
+                    db.infos.clear()
+                    for (entry in table.getObjects{this}) {
+                        db.infos.add(Info.fromColumns(entry))
                     }
                     db.save(true)
                 }
@@ -370,6 +380,19 @@ fun showConfWindow(val username : String) {
                     showVariantsWindow(null, username)
                 }
 
+                addButton -> {
+                    if(user.role != Role.USER) {
+                        table.data.add(Info("NAME", "MIDDLE", "LAST", "PHONE", "ADDRESS").asColumns())
+                        table.data = table.data
+                    }
+                }
+
+                remButton -> {
+                    if(user.role != Role.USER) {
+                        table.removeSelected()
+                    }
+                }
+
                 else -> println("unknown click source")
             }
         }
@@ -377,10 +400,8 @@ fun showConfWindow(val username : String) {
 
     saveButton.addMouseListener(clickHandler)
     closeButton.addMouseListener(clickHandler)
+    addButton.addMouseListener(clickHandler)
+    remButton.addMouseListener(clickHandler)
 
     frame.setVisible(true)
 }
-
-fun Map.Entry<String, String>.asColumns() : List<Value> = arrayList(StringValue(this.getKey()), StringValue(this.getValue()))
-
-val confColumns = arrayList(Column("Key", false), Column("Value"))

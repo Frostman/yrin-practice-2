@@ -1,0 +1,58 @@
+#!/usr/bin/python
+#encoding: utf-8
+import argparse, sys, os, zlib
+
+def size2bin(size):
+    a = []
+    s = bin(size)[2:].rjust(64, '0')
+    a.append(int(s[0:8], 2))
+    a.append(int(s[8:16], 2))
+    a.append(int(s[16:24], 2))
+    a.append(int(s[24:32], 2))
+    a.append(int(s[32:40], 2))
+    a.append(int(s[40:48], 2))
+    a.append(int(s[48:56], 2))
+    a.append(int(s[56:64], 2))
+    return a
+
+def hide(args):
+    out = open('packed-'+args['mp3'], 'wb')
+    inf = open(args['file'], 'rb')
+    inm = open(args['mp3'], 'rb')
+    buf = inm.read()
+    out.write(buf[0:len(buf)-128])
+    buf2 = inf.read()
+    arch = zlib.compress(buf2, 9)
+    size = size2bin(len(arch))
+    out.write(arch)
+    for i in xrange(8):
+        out.write('%c' % size[i])
+    out.write(buf[len(buf)-128:])
+    out.close()
+    inf.close()
+    inm.close()
+
+def extract(args):
+    out = open('unpacked-'+args['file'], 'wb')
+    inp = open(args['mp3'], 'rb')
+    buf  = inp.read(os.stat(args['mp3']).st_size - 136)
+    size = ''
+    for i in xrange(8):
+        size = size + bin(ord(inp.read(1)))[2:].rjust(8, '0')
+    size = int(size, 2)
+    arch = buf[len(buf)-size:]
+    buf = zlib.decompress(arch)
+    out.write(buf)
+    out.close()
+    inp.close()
+
+def main():
+    args = { 'mp3' : sys.argv[2], 'file' : sys.argv[3] }
+    if sys.argv[1] == 'pack':
+        hide(args)
+    elif sys.argv[1] == 'unpack':
+        extract(args)
+    else:
+        search(args)
+
+main()
